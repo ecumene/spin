@@ -91,6 +91,8 @@ pub enum ApplicationTrigger {
     Http(HttpTriggerConfiguration),
     /// Redis trigger type.
     Redis(RedisTriggerConfiguration),
+    /// Schedule trigger type
+    Schedule(ScheduleTriggerConfiguration),
 }
 
 /// HTTP trigger configuration.
@@ -112,6 +114,10 @@ pub struct RedisTriggerConfiguration {
     pub address: String,
 }
 
+/// Schedule trigger configuration
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ScheduleTriggerConfiguration;
+
 impl ApplicationTrigger {
     /// Returns the HttpTriggerConfiguration else None.
     pub fn as_http(&self) -> Option<&HttpTriggerConfiguration> {
@@ -125,6 +131,14 @@ impl ApplicationTrigger {
     pub fn as_redis(&self) -> Option<&RedisTriggerConfiguration> {
         match self {
             ApplicationTrigger::Redis(redis) => Some(redis),
+            _ => None,
+        }
+    }
+
+    /// Returns the ScheduleTriggerConfiguration else None.
+    pub fn as_schedule(&self) -> Option<&ScheduleTriggerConfiguration> {
+        match self {
+            ApplicationTrigger::Schedule(schedule) => Some(schedule),
             _ => None,
         }
     }
@@ -244,6 +258,31 @@ impl Default for WagiConfig {
     }
 }
 
+/// The executor for the Schedule component.
+///
+/// If an executor is not specified, the inferred default is `ScheduleExecutor::Spin`.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase", tag = "type")]
+pub enum ScheduleExecutor {
+    /// The component implements the Spin Redis interface.
+    Spin,
+}
+
+impl Default for ScheduleExecutor {
+    fn default() -> Self {
+        Self::Spin
+    }
+}
+
+/// Configuration for the Schedule trigger.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ScheduleConfig {
+    /// Cron-like expression for the schedule.
+    pub cron: String,
+    /// The Redis executor the component requires.
+    pub executor: Option<ScheduleExecutor>,
+}
+
 /// Configuration for the Redis trigger.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RedisConfig {
@@ -277,6 +316,8 @@ pub enum TriggerConfig {
     Http(HttpConfig),
     /// Redis trigger configuration
     Redis(RedisConfig),
+    /// Schedule trigger configuration
+    Schedule(ScheduleConfig),
 }
 
 impl Default for TriggerConfig {
@@ -297,6 +338,13 @@ impl TriggerConfig {
     pub fn as_redis(&self) -> Option<&RedisConfig> {
         match self {
             TriggerConfig::Redis(redis) => Some(redis),
+            _ => None,
+        }
+    }
+    /// Returns the ScheduleConfig else None.
+    pub fn as_schedule(&self) -> Option<&ScheduleConfig> {
+        match self {
+            TriggerConfig::Schedule(schedule) => Some(schedule),
             _ => None,
         }
     }

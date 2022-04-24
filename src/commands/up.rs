@@ -3,6 +3,7 @@ use spin_engine::{Builder, ExecutionContextConfiguration};
 use spin_http_engine::{HttpTrigger, TlsConfig};
 use spin_manifest::{Application, ApplicationTrigger, CoreComponent};
 use spin_redis_engine::RedisTrigger;
+use spin_schedule_engine::ScheduleTrigger;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -151,7 +152,12 @@ impl UpCommand {
                 let trigger = RedisTrigger::new(builder, app).await?;
                 trigger.run().await?;
             }
-        }
+            ApplicationTrigger::Schedule(_) => {
+                let builder = self.prepare_ctx_builder(app.clone()).await?;
+                let trigger = ScheduleTrigger::new(builder, app).await?;
+                trigger.run().await?;
+            }
+        };
 
         // We need to be absolutely sure it stays alive until this point: we don't want
         // any temp directory to be deleted prematurely.

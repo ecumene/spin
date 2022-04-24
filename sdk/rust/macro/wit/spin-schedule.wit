@@ -1,0 +1,11 @@
+// The entrypoint for a scheduled message handler.
+handle-scheduled-message: function(expression: payload) -> expected<_, error>
+
+// The message payload.
+type payload = list<u8>
+
+// General purpose error.
+enum error {
+    success,
+    error,
+}

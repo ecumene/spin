@@ -1,0 +1,12 @@
+spin_version = "1"
+authors = ["Fermyon Engineering <engineering@fermyon.com>"]
+description = "A scheduled application."
+name = "spin-scheduled"
+trigger = {type = "schedule"}
+version = "0.1.0"
+
+[[component]]
+id = "echo-message"
+source = "target/wasm32-wasi/release/rust_scheduled_message.wasm"
+[component.trigger]
+cron="1/30 * * * * *"
