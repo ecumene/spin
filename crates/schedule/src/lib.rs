@@ -11,7 +11,9 @@ use spin_manifest::{
     Application, ComponentMap, CoreComponent, ScheduleConfig, ScheduleTriggerConfiguration,
 };
 use spin_schedule::SpinScheduleData;
+use std::str::FromStr;
 use std::{collections::HashMap, sync::Arc};
+use tokio::task::spawn;
 use tokio_cron_scheduler::{Job, JobScheduler, JobToRun};
 
 wit_bindgen_wasmtime::import!("../../wit/ephemeral/spin-schedule.wit");
@@ -73,26 +75,39 @@ impl ScheduleTrigger {
 
     /// Run the Schedule trigger indefinitely.
     pub async fn run(&self) -> Result<()> {
-        let mut sched = JobScheduler::new();
+        let mut sched = JobScheduler::new().map_err(|_| anyhow!("Failed to create scheduler"))?;
 
         println!("{:?}", self.subscriptions);
 
         for (schedule, idx) in self.subscriptions.iter() {
-            let name = &self.engine.config.components[*idx].id;
+            let component = &self.engine.config.components[*idx];
             log::info!(
                 "Subscribed component #{} ({}) to schedule: {}",
                 idx,
-                name,
+                component.id,
                 schedule
             );
+            let executor = self
+                .component_triggers
+                .get(component)
+                .and_then(|t| t.executor.clone());
+            let engine = self.engine.clone();
             sched.add(
-                Job::new_async(name, |uuid, l| {
+                Job::new_async(schedule.as_ref(), |uuid, l| {
                     Box::pin(async move {
-                        drop(
-                            self.handle(schedule.to_string())
-                                .await
-                                .expect("Error scheduling task"),
-                        );
+                        let executor = executor.unwrap_or_default();
+                        log::info!("Received message on schedule: {:?}", schedule);
+
+                        match executor {
+                            spin_manifest::ScheduleExecutor::Spin => {
+                                log::trace!("Executing Spin Schedule component {}", component.id);
+                                let executor = SpinScheduleExecutor;
+                                executor
+                                    .execute(&engine, &component.id, &schedule.as_bytes())
+                                    .await
+                                    .expect("Failed to execute schedule");
+                            }
+                        };
                     })
                 })
                 .unwrap(),
@@ -101,43 +116,17 @@ impl ScheduleTrigger {
 
         loop {
             sched.tick();
-            std::thread::sleep(sched.time_till_next_job().map_err(|_| anyhow!("eerrr"))?);
+            if let Some(duration) = sched.time_till_next_job().map_err(|_| anyhow!("eerrr"))? {
+                std::thread::sleep(duration);
+            }
         }
-    }
-
-    // Handle the message.
-    async fn handle(&self, msg: String) -> Result<()> {
-        log::info!("Received message on schedule: {:?}", msg);
-
-        if let Some(idx) = self.subscriptions.get(&msg).copied() {
-            let component = &self.engine.config.components[idx];
-            let executor = self
-                .component_triggers
-                .get(component)
-                .and_then(|t| t.executor.clone())
-                .unwrap_or_default();
-
-            match executor {
-                spin_manifest::ScheduleExecutor::Spin => {
-                    log::trace!("Executing Spin Schedule component {}", component.id);
-                    let executor = SpinScheduleExecutor;
-                    executor
-                        .execute(&self.engine, &component.id, &msg.as_bytes())
-                        .await?
-                }
-            };
-        } else {
-            log::debug!("No subscription found for {:?}", msg);
-        }
-
-        Ok(())
     }
 }
 
 /// The Schedule executor trait.
 /// All Schedule executors must implement this trait.
 #[async_trait]
-pub(crate) trait ScheduleExecutor: Clone + Send + Sync + 'static {
+pub(crate) trait ScheduleExecutor: Clone + Send + 'static {
     async fn execute(
         &self,
         engine: &ExecutionContext,
