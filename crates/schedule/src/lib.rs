@@ -79,31 +79,35 @@ impl ScheduleTrigger {
 
         println!("{:?}", self.subscriptions);
 
-        for (schedule, idx) in self.subscriptions.iter() {
-            let component = &self.engine.config.components[*idx];
+        let subscriptions = self.subscriptions.clone();
+        for (schedule, idx) in subscriptions.into_iter() {
+            let component = &self.engine.config.components[idx].clone();
             log::info!(
                 "Subscribed component #{} ({}) to schedule: {}",
                 idx,
                 component.id,
                 schedule
             );
-            let executor = self
+            let config = self
                 .component_triggers
                 .get(component)
-                .and_then(|t| t.executor.clone());
-            let engine = self.engine.clone();
+                .cloned()
+                .and_then(|e| e.executor)
+                .unwrap_or_default();
+            let engine = &self.engine.clone();
             sched.add(
-                Job::new_async(schedule.as_ref(), |uuid, l| {
+                Job::new_async(schedule.as_ref(), move |uuid, l| {
+                    let id = component.id.clone();
+                    let schedule = schedule.clone();
                     Box::pin(async move {
-                        let executor = executor.unwrap_or_default();
                         log::info!("Received message on schedule: {:?}", schedule);
 
-                        match executor {
+                        match config {
                             spin_manifest::ScheduleExecutor::Spin => {
-                                log::trace!("Executing Spin Schedule component {}", component.id);
+                                log::trace!("Executing Spin Schedule component {}", &id);
                                 let executor = SpinScheduleExecutor;
                                 executor
-                                    .execute(&engine, &component.id, &schedule.as_bytes())
+                                    .execute(&engine, &id, &schedule.as_bytes())
                                     .await
                                     .expect("Failed to execute schedule");
                             }
