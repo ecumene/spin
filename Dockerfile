@@ -1,6 +1,5 @@
 FROM rust:1.61 as builder
-ADD . /app
-WORKDIR /app
+ADD . .
 RUN rustup target add wasm32-wasi
 RUN cargo build --all-features --release
 
